@@ -207,6 +207,11 @@
           <artifactId>hadoop-distcp</artifactId>
           <version>${hadoop.version}</version>
         </dependency>
+        <dependency>
+          <groupId>org.apache.hadoop</groupId>
+          <artifactId>hadoop-aws</artifactId>
+          <version>${hadoop.version}</version> <!-- Use the appropriate version -->
+        </dependency>
       </dependencies>
     </profile>
     <profile>
