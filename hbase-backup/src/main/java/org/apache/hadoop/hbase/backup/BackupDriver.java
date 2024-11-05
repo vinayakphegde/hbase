@@ -17,6 +17,9 @@
  */
 package org.apache.hadoop.hbase.backup;
 
+import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.LONG_OPTION_ADDITIONAL_ARGS_NAME;
+import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_ADDITIONAL_ARGS_DESC;
+import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_ADDITIONAL_ARGS_NAME;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_BACKUP_LIST_DESC;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_BANDWIDTH;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_BANDWIDTH_DESC;
@@ -159,6 +162,8 @@ public class BackupDriver extends AbstractHBaseTool {
     addOptWithArg(OPTION_PATH, OPTION_PATH_DESC);
     addOptWithArg(OPTION_KEEP, OPTION_KEEP_DESC);
     addOptWithArg(OPTION_YARN_QUEUE_NAME, OPTION_YARN_QUEUE_NAME_DESC);
+    addOptWithArg(OPTION_ADDITIONAL_ARGS_NAME,
+      LONG_OPTION_ADDITIONAL_ARGS_NAME, OPTION_ADDITIONAL_ARGS_DESC);
 
   }
 

@@ -22,5 +22,6 @@ import org.apache.yetus.audience.InterfaceAudience;
 @InterfaceAudience.Private
 public enum BackupType {
   FULL,
-  INCREMENTAL
+  INCREMENTAL,
+  CONTINUOUS
 }

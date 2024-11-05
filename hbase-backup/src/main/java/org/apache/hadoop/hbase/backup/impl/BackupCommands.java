@@ -17,6 +17,8 @@
  */
 package org.apache.hadoop.hbase.backup.impl;
 
+import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_ADDITIONAL_ARGS_DESC;
+import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_ADDITIONAL_ARGS_NAME;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_BACKUP_LIST_DESC;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_BANDWIDTH;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_BANDWIDTH_DESC;
@@ -44,7 +46,9 @@ import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_YARN_
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
@@ -289,6 +293,7 @@ public final class BackupCommands {
       if (
         !BackupType.FULL.toString().equalsIgnoreCase(args[1])
           && !BackupType.INCREMENTAL.toString().equalsIgnoreCase(args[1])
+          && !BackupType.CONTINUOUS.toString().equalsIgnoreCase(args[1])
       ) {
         System.out.println("ERROR: invalid backup type: " + args[1]);
         printUsage();
@@ -339,20 +344,48 @@ public final class BackupCommands {
 
       boolean ignoreChecksum = cmdline.hasOption(OPTION_IGNORECHECKSUM);
 
+      Map<String, String> additionalArgs = parseArgs(cmdline.getOptionValue(OPTION_ADDITIONAL_ARGS_NAME));
+
+      BackupType backupType = BackupType.valueOf(args[1].toUpperCase());
+
       try (BackupAdminImpl admin = new BackupAdminImpl(conn)) {
-        BackupRequest.Builder builder = new BackupRequest.Builder();
-        BackupRequest request = builder.withBackupType(BackupType.valueOf(args[1].toUpperCase()))
+        BackupRequest request = new BackupRequest.Builder()
+          .withBackupType(backupType)
           .withTableList(
             tables != null ? Lists.newArrayList(BackupUtils.parseTableNames(tables)) : null)
           .withTargetRootDir(targetBackupDir).withTotalTasks(workers)
           .withBandwidthPerTasks(bandwidth).withNoChecksumVerify(ignoreChecksum)
-          .withBackupSetName(setName).build();
+          .withBackupSetName(setName).withAdditionalArgs(additionalArgs).build();
+
         String backupId = admin.backupTables(request);
         System.out.println("Backup session " + backupId + " finished. Status: SUCCESS");
       } catch (IOException e) {
         System.out.println("Backup session finished. Status: FAILURE");
         throw e;
       }
+    }
+
+    private Map<String, String> parseArgs(String args) throws IOException {
+      Map<String, String> result = new HashMap<>();
+      if (args == null || args.trim().isEmpty()) {
+        return result;
+      }
+
+      // Split the input by commas to get individual key=value pairs
+      String[] pairs = args.split(",");
+      for (String pair : pairs) {
+        String[] keyValue = pair.split("=", 2);
+
+        if (keyValue.length != 2 || keyValue[0].trim().isEmpty() || keyValue[1].trim().isEmpty()) {
+          System.out.println("ERROR: Invalid format for additional arguments: " +
+            ". Expected format: key1=value1,key2=value2...");
+          printUsage();
+          throw new IOException(INCORRECT_USAGE);
+        }
+
+        result.put(keyValue[0].trim(), keyValue[1].trim());
+      }
+      return result;
     }
 
     private boolean isRootFolder(String targetBackupDir) {
@@ -400,6 +433,7 @@ public final class BackupCommands {
       options.addOption(OPTION_YARN_QUEUE_NAME, true, OPTION_YARN_QUEUE_NAME_DESC);
       options.addOption(OPTION_DEBUG, false, OPTION_DEBUG_DESC);
       options.addOption(OPTION_IGNORECHECKSUM, false, OPTION_IGNORECHECKSUM_DESC);
+      options.addOption(OPTION_ADDITIONAL_ARGS_NAME, true, OPTION_ADDITIONAL_ARGS_DESC);
 
       HelpFormatter helpFormatter = new HelpFormatter();
       helpFormatter.setLeftPadding(2);

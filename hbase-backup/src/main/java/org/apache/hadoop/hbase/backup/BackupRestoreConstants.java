@@ -96,6 +96,12 @@ public interface BackupRestoreConstants {
   String OPTION_YARN_QUEUE_NAME_DESC = "Yarn queue name to run backup create command on";
   String OPTION_YARN_QUEUE_NAME_RESTORE_DESC = "Yarn queue name to run backup restore command on";
 
+  String OPTION_ADDITIONAL_ARGS_NAME = "aa";
+  String LONG_OPTION_ADDITIONAL_ARGS_NAME = "additional-args";
+  String OPTION_ADDITIONAL_ARGS_DESC = "A comma-separated list of key-value pairs "
+    + "to specify additional arguments for backup";
+
+
   String JOB_NAME_CONF_KEY = "mapreduce.job.name";
 
   String BACKUP_CONFIG_STRING =

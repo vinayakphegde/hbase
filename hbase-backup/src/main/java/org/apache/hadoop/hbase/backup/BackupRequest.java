@@ -17,7 +17,9 @@
  */
 package org.apache.hadoop.hbase.backup;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.yetus.audience.InterfaceAudience;
 
@@ -75,6 +77,11 @@ public final class BackupRequest {
       return this;
     }
 
+    public Builder withAdditionalArgs(Map<String, String> additionsArgs) {
+      request.setAdditionalArgs(additionsArgs);
+      return this;
+    }
+
     public BackupRequest build() {
       return request;
     }
@@ -89,6 +96,7 @@ public final class BackupRequest {
   private boolean noChecksumVerify = false;
   private String backupSetName;
   private String yarnPoolName;
+  private Map<String, String> additionalArgs = new HashMap<>();
 
   private BackupRequest() {
   }
@@ -162,5 +170,13 @@ public final class BackupRequest {
 
   public void setYarnPoolName(String yarnPoolName) {
     this.yarnPoolName = yarnPoolName;
+  }
+
+  public void setAdditionalArgs(Map<String, String> additionalArgs) {
+    this.additionalArgs = additionalArgs;
+  }
+
+  public Map<String, String> getAdditionalArgs() {
+    return this.additionalArgs;
   }
 }
