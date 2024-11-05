@@ -19,6 +19,7 @@ package org.apache.hadoop.hbase.backup;
 
 import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.backup.impl.ContinuousTableBackupClient;
 import org.apache.hadoop.hbase.backup.impl.FullTableBackupClient;
 import org.apache.hadoop.hbase.backup.impl.IncrementalTableBackupClient;
 import org.apache.hadoop.hbase.backup.impl.TableBackupClient;
@@ -47,7 +48,9 @@ public final class BackupClientFactory {
     }
 
     BackupType type = request.getBackupType();
-    if (type == BackupType.FULL) {
+    if (type == BackupType.CONTINUOUS) {
+      return new ContinuousTableBackupClient(conn, backupId, request);
+    } else if (type == BackupType.FULL) {
       return new FullTableBackupClient(conn, backupId, request);
     } else {
       return new IncrementalTableBackupClient(conn, backupId, request);

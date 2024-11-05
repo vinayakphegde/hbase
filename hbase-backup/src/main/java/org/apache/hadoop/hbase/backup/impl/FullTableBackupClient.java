@@ -60,72 +60,6 @@ public class FullTableBackupClient extends TableBackupClient {
   }
 
   /**
-   * Do snapshot copy.
-   * @param backupInfo backup info
-   * @throws Exception exception
-   */
-  protected void snapshotCopy(BackupInfo backupInfo) throws Exception {
-    LOG.info("Snapshot copy is starting.");
-
-    // set overall backup phase: snapshot_copy
-    backupInfo.setPhase(BackupPhase.SNAPSHOTCOPY);
-
-    // call ExportSnapshot to copy files based on hbase snapshot for backup
-    // ExportSnapshot only support single snapshot export, need loop for multiple tables case
-    BackupCopyJob copyService = BackupRestoreFactory.getBackupCopyJob(conf);
-
-    // number of snapshots matches number of tables
-    float numOfSnapshots = backupInfo.getSnapshotNames().size();
-
-    LOG.debug("There are " + (int) numOfSnapshots + " snapshots to be copied.");
-
-    for (TableName table : backupInfo.getTables()) {
-      // Currently we simply set the sub copy tasks by counting the table snapshot number, we can
-      // calculate the real files' size for the percentage in the future.
-      // backupCopier.setSubTaskPercntgInWholeTask(1f / numOfSnapshots);
-      int res;
-      ArrayList<String> argsList = new ArrayList<>();
-      argsList.add("-snapshot");
-      argsList.add(backupInfo.getSnapshotName(table));
-      argsList.add("-copy-to");
-      argsList.add(backupInfo.getTableBackupDir(table));
-      if (backupInfo.getBandwidth() > -1) {
-        argsList.add("-bandwidth");
-        argsList.add(String.valueOf(backupInfo.getBandwidth()));
-      }
-      if (backupInfo.getWorkers() > -1) {
-        argsList.add("-mappers");
-        argsList.add(String.valueOf(backupInfo.getWorkers()));
-      }
-      if (backupInfo.getNoChecksumVerify()) {
-        argsList.add("-no-checksum-verify");
-      }
-
-      String[] args = argsList.toArray(new String[0]);
-
-      String jobname = "Full-Backup_" + backupInfo.getBackupId() + "_" + table.getNameAsString();
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Setting snapshot copy job name to : " + jobname);
-      }
-      conf.set(JOB_NAME_CONF_KEY, jobname);
-
-      LOG.debug("Copy snapshot " + args[1] + " to " + args[3]);
-      res = copyService.copy(backupInfo, backupManager, conf, BackupType.FULL, args);
-
-      // if one snapshot export failed, do not continue for remained snapshots
-      if (res != 0) {
-        LOG.error("Exporting Snapshot " + args[1] + " failed with return code: " + res + ".");
-
-        throw new IOException("Failed of exporting snapshot " + args[1] + " to " + args[3]
-          + " with reason code " + res);
-      }
-
-      conf.unset(JOB_NAME_CONF_KEY);
-      LOG.info("Snapshot copy " + args[1] + " finished.");
-    }
-  }
-
-  /**
    * Backup request execution.
    * @throws IOException if the execution of the backup fails
    */
@@ -199,31 +133,5 @@ public class FullTableBackupClient extends TableBackupClient {
         BackupType.FULL, conf);
       throw new IOException(e);
     }
-  }
-
-  protected void snapshotTable(Admin admin, TableName tableName, String snapshotName)
-    throws IOException {
-    int maxAttempts = conf.getInt(BACKUP_MAX_ATTEMPTS_KEY, DEFAULT_BACKUP_MAX_ATTEMPTS);
-    int pause = conf.getInt(BACKUP_ATTEMPTS_PAUSE_MS_KEY, DEFAULT_BACKUP_ATTEMPTS_PAUSE_MS);
-    int attempts = 0;
-
-    while (attempts++ < maxAttempts) {
-      try {
-        admin.snapshot(snapshotName, tableName);
-        return;
-      } catch (IOException ee) {
-        LOG.warn("Snapshot attempt " + attempts + " failed for table " + tableName
-          + ", sleeping for " + pause + "ms", ee);
-        if (attempts < maxAttempts) {
-          try {
-            Thread.sleep(pause);
-          } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            break;
-          }
-        }
-      }
-    }
-    throw new IOException("Failed to snapshot table " + tableName);
   }
 }

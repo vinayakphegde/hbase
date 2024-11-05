@@ -71,6 +71,7 @@ public class BackupInfo implements Comparable<BackupInfo> {
    */
   public enum BackupPhase {
     REQUEST,
+    SETUP_WAL_REPLICATION,
     SNAPSHOT,
     PREPARE_INCREMENTAL,
     SNAPSHOTCOPY,
@@ -169,6 +170,8 @@ public class BackupInfo implements Comparable<BackupInfo> {
    * Do not verify checksum between source snapshot and exported snapshot
    */
   private boolean noChecksumVerify;
+
+  private Map<String, String> additionalArgs = new HashMap<>();
 
   public BackupInfo() {
     backupTableInfoMap = new HashMap<>();
@@ -399,6 +402,14 @@ public class BackupInfo implements Comparable<BackupInfo> {
       }
     }
     return null;
+  }
+
+  public void setAdditionalArgs(Map<String, String> additionalArgs) {
+    this.additionalArgs = additionalArgs;
+  }
+
+  public Map<String, String> getAdditionalArgs() {
+    return this.additionalArgs;
   }
 
   public BackupProtos.BackupInfo toProtosBackupInfo() {

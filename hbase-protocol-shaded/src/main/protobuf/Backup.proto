@@ -34,6 +34,7 @@ import "HBase.proto";
 enum BackupType {
   FULL = 0;
   INCREMENTAL = 1;
+  CONTINUOUS = 2;
 }
 /**
  * ServerTimestamp keeps last WAL roll time per Region Server
@@ -117,5 +118,6 @@ message BackupInfo {
     SNAPSHOTCOPY = 3;
     INCREMENTAL_COPY = 4;
     STORE_MANIFEST = 5;
+    SETUP_WAL_REPLICATION = 6;
   }
 }

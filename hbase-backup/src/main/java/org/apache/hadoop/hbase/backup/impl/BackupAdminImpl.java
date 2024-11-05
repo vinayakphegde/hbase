@@ -538,7 +538,7 @@ public class BackupAdminImpl implements BackupAdmin {
           throw new IOException(msg);
         }
       }
-      tableList = Lists.newArrayList(incrTableSet);
+      tableList = Lists.newArrayList(incrTableSet); // TODO: is this correct?
     }
     if (tableList != null && !tableList.isEmpty()) {
       for (TableName table : tableList) {
@@ -581,7 +581,8 @@ public class BackupAdminImpl implements BackupAdmin {
     request = builder.withBackupType(request.getBackupType()).withTableList(tableList)
       .withTargetRootDir(request.getTargetRootDir()).withBackupSetName(request.getBackupSetName())
       .withTotalTasks(request.getTotalTasks()).withBandwidthPerTasks((int) request.getBandwidth())
-      .withNoChecksumVerify(request.getNoChecksumVerify()).build();
+      .withNoChecksumVerify(request.getNoChecksumVerify())
+      .withAdditionalArgs(request.getAdditionalArgs()).build();
 
     TableBackupClient client;
     try {
