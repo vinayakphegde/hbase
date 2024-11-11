@@ -98,6 +98,9 @@ public class ContinuousBackupManager {
       TableName tableName = entry.getKey();
       List<WAL.Entry> walEntries = entry.getValue();
       List<Path> bulkLoadFiles = getBulkLoadFiles(tableName, walEntries);
+      for (Path p : bulkLoadFiles) {
+        LOG.info("Bulkload File: {}", p.toString());
+      }
       continuousBackupStagingManager.stageEntries(tableName, walEntries, bulkLoadFiles);
     }
   }
@@ -118,7 +121,7 @@ public class ContinuousBackupManager {
         if (CellUtil.matchingQualifier(cell, WALEdit.BULK_LOAD)) {
           processBulkLoadDescriptor(entry, bulkLoadFilePaths, cell, namespace, table);
         } else {
-          LOG.info("Skipping non-bulk-load cell.");
+          LOG.debug("Skipping non-bulk-load cell.");
         }
       }
     }

@@ -65,7 +65,7 @@ public class ContinuousBackupStagingManager {
       writer.append(entry);
     }
 
-    writer.sync(false); // TODO: what should we pass for sync here?
+    writer.sync(true); // TODO: what should we pass for sync here?
     walWriterContext.addBulkLoadFiles(bulkLoadFiles);
     long maxWalSize = conf.getLong(ContinuousBackupManager.CONF_BACKUP_MAX_WAL_SIZE, ContinuousBackupManager.DEFAULT_MAX_WAL_SIZE);
     if (writer.getLength() >= maxWalSize) {
@@ -94,7 +94,7 @@ public class ContinuousBackupStagingManager {
   }
 
   private Path getWalDir(String namespace, String table) {
-    return new Path(walsStagingDir, new Path(namespace, table));
+    return new Path(namespace, table);
   }
 
   private WalWriterContext getWalWriterContext(Path walDir) throws IOException {
@@ -108,11 +108,15 @@ public class ContinuousBackupStagingManager {
 
   private WalWriterContext createNewWalWriterContext(Path walDir) throws IOException {
     long currentTime = EnvironmentEdgeManager.getDelegate().currentTime();
+    Path walDirFullPath = new Path(walsStagingDir, walDir);
+    if (!rootFs.exists(walDirFullPath)) {
+      rootFs.mkdirs(walDirFullPath);
+    }
     String walFileName = WAL_FILE_PREFIX + currentTime;
     Path walFilePath = new Path(walDir, walFileName);
-    Path fullPath = new Path(walsStagingDir, walFilePath);
-    WALProvider.Writer writer = WALFactory.createWALWriter(rootFs, fullPath, conf);
-    LOG.info("WAL writer created successfully for {}", fullPath);
+    Path walFileFullPath = new Path(walDirFullPath, walFileName);
+    WALProvider.Writer writer = WALFactory.createWALWriter(rootFs, walFileFullPath, conf);
+    LOG.info("WAL writer created successfully for {}", walFileFullPath);
     return new WalWriterContext(writer, walFilePath);
   }
 

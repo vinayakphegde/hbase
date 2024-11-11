@@ -1,10 +1,13 @@
 package org.apache.hadoop.hbase.backup.impl;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.CompoundConfiguration;
 import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.backup.BackupCopyJob;
 import org.apache.hadoop.hbase.backup.BackupInfo;
 import org.apache.hadoop.hbase.backup.BackupRequest;
+import org.apache.hadoop.hbase.backup.BackupRestoreFactory;
 import org.apache.hadoop.hbase.backup.BackupType;
 import org.apache.hadoop.hbase.backup.master.LogRollMasterProcedureManager;
 import org.apache.hadoop.hbase.backup.util.BackupUtils;
@@ -22,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.JOB_NAME_CONF_KEY;
 import static org.apache.hadoop.hbase.backup.util.ContinuousBackup.CONFIG_CONTINUOUS_BACKUP_REPLICATION_ENDPOINT;
 import static org.apache.hadoop.hbase.backup.util.ContinuousBackup.DEFAULT_CONTINUOUS_BACKUP_REPLICATION_ENDPOINT;
 
@@ -117,7 +121,9 @@ public class ContinuousTableBackupClient extends TableBackupClient {
 
     String continuousBackupReplicationEndpoint = additionalArgs.getOrDefault(
       CONFIG_CONTINUOUS_BACKUP_REPLICATION_ENDPOINT, DEFAULT_CONTINUOUS_BACKUP_REPLICATION_ENDPOINT);
-    additionalArgs.put("hbase.backup.root.dir", backupInfo.getBackupRootDir());
+
+    String rootDir = backupInfo.getBackupRootDir() + Path.SEPARATOR + backupInfo.getBackupId();
+    additionalArgs.put("hbase.backup.root.dir", rootDir);
 
     Map<TableName, List<String>> tableMap = tableList.stream()
       .collect(Collectors.toMap(tableName -> tableName, tableName -> new ArrayList<>()));
@@ -138,6 +144,76 @@ public class ContinuousTableBackupClient extends TableBackupClient {
         e.getMessage(), e);
       throw e;
     }
+  }
+
+  /**
+   * Do snapshot copy.
+   * @param backupInfo backup info
+   * @throws Exception exception
+   */
+  protected void snapshotCopy(BackupInfo backupInfo) throws Exception {
+    LOG.info("Snapshot copy is starting.");
+
+    // set overall backup phase: snapshot_copy
+    backupInfo.setPhase(BackupInfo.BackupPhase.SNAPSHOTCOPY);
+
+    // call ExportSnapshot to copy files based on hbase snapshot for backup
+    // ExportSnapshot only support single snapshot export, need loop for multiple tables case
+    BackupCopyJob copyService = BackupRestoreFactory.getBackupCopyJob(conf);
+
+    // number of snapshots matches number of tables
+    float numOfSnapshots = backupInfo.getSnapshotNames().size();
+
+    LOG.debug("There are " + (int) numOfSnapshots + " snapshots to be copied.");
+
+    for (TableName table : backupInfo.getTables()) {
+      // Currently we simply set the sub copy tasks by counting the table snapshot number, we can
+      // calculate the real files' size for the percentage in the future.
+      // backupCopier.setSubTaskPercntgInWholeTask(1f / numOfSnapshots);
+      int res;
+      ArrayList<String> argsList = new ArrayList<>();
+      argsList.add("-snapshot");
+      argsList.add(backupInfo.getSnapshotName(table));
+      argsList.add("-copy-to");
+      argsList.add(backupInfo.getTableBackupDir(table) + Path.SEPARATOR + getSnapshotTs(backupInfo.getSnapshotName(table)));
+      if (backupInfo.getBandwidth() > -1) {
+        argsList.add("-bandwidth");
+        argsList.add(String.valueOf(backupInfo.getBandwidth()));
+      }
+      if (backupInfo.getWorkers() > -1) {
+        argsList.add("-mappers");
+        argsList.add(String.valueOf(backupInfo.getWorkers()));
+      }
+      if (backupInfo.getNoChecksumVerify()) {
+        argsList.add("-no-checksum-verify");
+      }
+
+      String[] args = argsList.toArray(new String[0]);
+
+      String jobname = "Full-Backup_" + backupInfo.getBackupId() + "_" + table.getNameAsString();
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Setting snapshot copy job name to : " + jobname);
+      }
+      conf.set(JOB_NAME_CONF_KEY, jobname);
+
+      LOG.debug("Copy snapshot " + args[1] + " to " + args[3]);
+      res = copyService.copy(backupInfo, backupManager, conf, BackupType.FULL, args);
+
+      // if one snapshot export failed, do not continue for remained snapshots
+      if (res != 0) {
+        LOG.error("Exporting Snapshot " + args[1] + " failed with return code: " + res + ".");
+
+        throw new IOException("Failed of exporting snapshot " + args[1] + " to " + args[3]
+          + " with reason code " + res);
+      }
+
+      conf.unset(JOB_NAME_CONF_KEY);
+      LOG.info("Snapshot copy " + args[1] + " finished.");
+    }
+  }
+
+  private String getSnapshotTs(String snapshotName) {
+    return snapshotName.split("_")[1];
   }
 }
 
