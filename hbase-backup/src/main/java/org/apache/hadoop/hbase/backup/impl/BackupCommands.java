@@ -36,6 +36,8 @@ import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_RECOR
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_SET;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_SET_BACKUP_DESC;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_SET_DESC;
+import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_SNAPSHOT_TYPE_DESC;
+import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_SNAPSHOT_TYPE_NAME;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_TABLE;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_TABLE_DESC;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_TABLE_LIST_DESC;
@@ -46,6 +48,7 @@ import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_YARN_
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,6 +67,7 @@ import org.apache.hadoop.hbase.backup.BackupRestoreConstants;
 import org.apache.hadoop.hbase.backup.BackupRestoreConstants.BackupCommand;
 import org.apache.hadoop.hbase.backup.BackupType;
 import org.apache.hadoop.hbase.backup.HBackupFileSystem;
+import org.apache.hadoop.hbase.backup.UpdateBackupRequest;
 import org.apache.hadoop.hbase.backup.util.BackupSet;
 import org.apache.hadoop.hbase.backup.util.BackupUtils;
 import org.apache.hadoop.hbase.client.Connection;
@@ -102,6 +106,10 @@ public final class BackupCommands {
       + "  type           \"full\" to create a full backup image\n"
       + "                 \"incremental\" to create an incremental backup image\n"
       + "  backup_path     Full path to store the backup image\n";
+
+  public static final String UPDATE_CMD_USAGE =
+    "Usage: hbase backup update <backup_id> [options]\n"
+      + "  <backup_id>    The identifier of the backup to be updated\n";
 
   public static final String PROGRESS_CMD_USAGE = "Usage: hbase backup progress <backup_id>\n"
     + "  backup_id       Backup image id (optional). If no id specified, the command will show\n"
@@ -246,6 +254,8 @@ public final class BackupCommands {
       case MERGE:
         cmd = new MergeCommand(conf, cmdline);
         break;
+      case UPDATE:
+        cmd = new UpdateCommand(conf, cmdline);
       case HELP:
       default:
         cmd = new HelpCommand(conf, cmdline);
@@ -1158,6 +1168,168 @@ public final class BackupCommands {
     @Override
     protected void printUsage() {
       System.out.println(SET_CMD_USAGE);
+    }
+  }
+
+  public static class UpdateCommand extends Command {
+    UpdateCommand(Configuration conf, CommandLine cmdline) {
+      super(conf);
+      this.cmdline = cmdline;
+    }
+
+    @Override
+    protected boolean requiresNoActiveSession() {
+      return true;
+    }
+
+    @Override
+    protected boolean requiresConsistentState() {
+      return true;
+    }
+
+    @Override
+    public void execute() throws IOException {
+      if (cmdline == null || cmdline.getArgs() == null) {
+        printUsage();
+        throw new IOException(INCORRECT_USAGE);
+      }
+      String[] args = cmdline.getArgs();
+      if (args.length != 2) {
+        printUsage();
+        throw new IOException(INCORRECT_USAGE);
+      }
+      String backupId = args[1];
+      if (!backupExists(backupId)) {
+        System.out.println("Specified backup does not exist in the system");
+        printUsage();
+        throw new IOException(INCORRECT_USAGE);
+      }
+
+      String tables;
+
+      // Check if we have both: backup set and list of tables
+      if (cmdline.hasOption(OPTION_TABLE) && cmdline.hasOption(OPTION_SET)) {
+        System.out
+          .println("ERROR: You can specify either backup set or list" + " of tables, but not both");
+        printUsage();
+        throw new IOException(INCORRECT_USAGE);
+      }
+
+      // Creates connection
+      super.execute();
+
+      // Check backup set
+      String setName = null;
+      if (cmdline.hasOption(OPTION_SET)) {
+        setName = cmdline.getOptionValue(OPTION_SET);
+        tables = getTablesForSet(setName);
+
+        if (tables == null) {
+          System.out
+            .println("ERROR: Backup set '" + setName + "' is either empty or does not exist");
+          printUsage();
+          throw new IOException(INCORRECT_USAGE);
+        }
+      } else {
+        tables = cmdline.getOptionValue(OPTION_TABLE);
+      }
+
+      int bandwidth = cmdline.hasOption(OPTION_BANDWIDTH)
+        ? Integer.parseInt(cmdline.getOptionValue(OPTION_BANDWIDTH))
+        : -1;
+
+      int workers = cmdline.hasOption(OPTION_WORKERS)
+        ? Integer.parseInt(cmdline.getOptionValue(OPTION_WORKERS))
+        : -1;
+
+      boolean ignoreChecksum = cmdline.hasOption(OPTION_IGNORECHECKSUM);
+
+      Map<String, String> additionalArgs = parseArgs(cmdline.getOptionValue(OPTION_ADDITIONAL_ARGS_NAME));
+
+      String snapshotType = cmdline.hasOption(OPTION_SNAPSHOT_TYPE_NAME)
+        ? cmdline.getOptionValue(OPTION_SNAPSHOT_TYPE_NAME)
+        : null;
+
+
+      try (BackupAdminImpl admin = new BackupAdminImpl(conn)) {
+        UpdateBackupRequest request = new UpdateBackupRequest.Builder()
+          .withBackupId(backupId)
+          .withSnapshotType(snapshotType)
+          .withTableList(
+            tables != null ? Lists.newArrayList(BackupUtils.parseTableNames(tables)) : null)
+          .withTotalTasks(workers)
+          .withBandwidthPerTasks(bandwidth).withNoChecksumVerify(ignoreChecksum)
+          .withBackupSetName(setName).withAdditionalArgs(additionalArgs).build();
+
+        boolean success = admin.updateBackup(request);
+        System.out.println("Backup session " + backupId + " finished. Status: SUCCESS");
+      } catch (IOException e) {
+        System.out.println("Backup session finished. Status: FAILURE");
+        throw e;
+      }
+    }
+
+    private boolean backupExists(String backupId) throws IOException {
+      try (final BackupSystemTable table = new BackupSystemTable(conn)) {
+        return table.readBackupInfo(backupId) != null;
+      }
+    }
+
+    private Map<String, String> parseArgs(String args) throws IOException {
+      Map<String, String> result = new HashMap<>();
+      if (args == null || args.trim().isEmpty()) {
+        return result;
+      }
+
+      // Split the input by commas to get individual key=value pairs
+      String[] pairs = args.split(",");
+      for (String pair : pairs) {
+        String[] keyValue = pair.split("=", 2);
+
+        if (keyValue.length != 2 || keyValue[0].trim().isEmpty() || keyValue[1].trim().isEmpty()) {
+          System.out.println("ERROR: Invalid format for additional arguments: " +
+            ". Expected format: key1=value1,key2=value2...");
+          printUsage();
+          throw new IOException(INCORRECT_USAGE);
+        }
+
+        result.put(keyValue[0].trim(), keyValue[1].trim());
+      }
+      return result;
+    }
+
+    private String getTablesForSet(String name) throws IOException {
+      try (final BackupSystemTable table = new BackupSystemTable(conn)) {
+        List<TableName> tables = table.describeBackupSet(name);
+
+        if (tables == null) {
+          return null;
+        }
+
+        return StringUtils.join(tables, BackupRestoreConstants.TABLENAME_DELIMITER_IN_COMMAND);
+      }
+    }
+
+    @Override
+    protected void printUsage() {
+      System.out.println(UPDATE_CMD_USAGE);
+      Options options = new Options();
+      options.addOption(OPTION_SNAPSHOT_TYPE_NAME, true, OPTION_SNAPSHOT_TYPE_DESC);
+      options.addOption(OPTION_WORKERS, true, OPTION_WORKERS_DESC);
+      options.addOption(OPTION_BANDWIDTH, true, OPTION_BANDWIDTH_DESC);
+      options.addOption(OPTION_SET, true, OPTION_SET_BACKUP_DESC);
+      options.addOption(OPTION_TABLE, true, OPTION_TABLE_LIST_DESC);
+      options.addOption(OPTION_YARN_QUEUE_NAME, true, OPTION_YARN_QUEUE_NAME_DESC);
+      options.addOption(OPTION_DEBUG, false, OPTION_DEBUG_DESC);
+      options.addOption(OPTION_IGNORECHECKSUM, false, OPTION_IGNORECHECKSUM_DESC);
+      options.addOption(OPTION_ADDITIONAL_ARGS_NAME, true, OPTION_ADDITIONAL_ARGS_DESC);
+
+      HelpFormatter helpFormatter = new HelpFormatter();
+      helpFormatter.setLeftPadding(2);
+      helpFormatter.setDescPadding(8);
+      helpFormatter.setWidth(100);
+      helpFormatter.setSyntaxPrefix("Options:");
+      helpFormatter.printHelp(" ", null, options, USAGE_FOOTER);
     }
   }
 }

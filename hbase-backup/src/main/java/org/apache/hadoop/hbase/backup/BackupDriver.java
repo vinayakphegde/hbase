@@ -18,6 +18,7 @@
 package org.apache.hadoop.hbase.backup;
 
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.LONG_OPTION_ADDITIONAL_ARGS_NAME;
+import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.LONG_OPTION_SNAPSHOT_TYPE_NAME;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_ADDITIONAL_ARGS_DESC;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_ADDITIONAL_ARGS_NAME;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_BACKUP_LIST_DESC;
@@ -36,6 +37,8 @@ import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_RECOR
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_RECORD_NUMBER_DESC;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_SET;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_SET_DESC;
+import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_SNAPSHOT_TYPE_DESC;
+import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_SNAPSHOT_TYPE_NAME;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_TABLE;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_TABLE_DESC;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.OPTION_WORKERS;
@@ -120,6 +123,8 @@ public class BackupDriver extends AbstractHBaseTool {
       type = BackupCommand.REPAIR;
     } else if (BackupCommand.MERGE.name().equalsIgnoreCase(cmd)) {
       type = BackupCommand.MERGE;
+    } else if (BackupCommand.UPDATE.name().equalsIgnoreCase(cmd)) {
+      type = BackupCommand.UPDATE;
     } else {
       System.out.println("Unsupported command for backup: " + cmd);
       printToolUsage();
@@ -164,6 +169,8 @@ public class BackupDriver extends AbstractHBaseTool {
     addOptWithArg(OPTION_YARN_QUEUE_NAME, OPTION_YARN_QUEUE_NAME_DESC);
     addOptWithArg(OPTION_ADDITIONAL_ARGS_NAME,
       LONG_OPTION_ADDITIONAL_ARGS_NAME, OPTION_ADDITIONAL_ARGS_DESC);
+    addOptWithArg(OPTION_SNAPSHOT_TYPE_NAME,
+      LONG_OPTION_SNAPSHOT_TYPE_NAME, OPTION_SNAPSHOT_TYPE_DESC);
 
   }
 

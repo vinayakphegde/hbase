@@ -101,6 +101,11 @@ public interface BackupRestoreConstants {
   String OPTION_ADDITIONAL_ARGS_DESC = "A comma-separated list of key-value pairs "
     + "to specify additional arguments for backup";
 
+  String OPTION_SNAPSHOT_TYPE_NAME = "st";
+  String LONG_OPTION_SNAPSHOT_TYPE_NAME = "snapshot-type";
+  String OPTION_SNAPSHOT_TYPE_DESC = "Specifies the type of snapshot action for the update command. "
+    + "Options: 'full' for a complete backup snapshot, or 'incremental' for a backup optimization.";
+
 
   String JOB_NAME_CONF_KEY = "mapreduce.job.name";
 
@@ -147,6 +152,7 @@ public interface BackupRestoreConstants {
     SET_DELETE,
     SET_DESCRIBE,
     SET_LIST,
-    REPAIR
+    REPAIR,
+    UPDATE
   }
 }

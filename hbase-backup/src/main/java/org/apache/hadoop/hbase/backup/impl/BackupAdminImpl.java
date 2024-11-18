@@ -41,6 +41,7 @@ import org.apache.hadoop.hbase.backup.BackupRestoreFactory;
 import org.apache.hadoop.hbase.backup.BackupType;
 import org.apache.hadoop.hbase.backup.HBackupFileSystem;
 import org.apache.hadoop.hbase.backup.RestoreRequest;
+import org.apache.hadoop.hbase.backup.UpdateBackupRequest;
 import org.apache.hadoop.hbase.backup.util.BackupSet;
 import org.apache.hadoop.hbase.backup.util.BackupUtils;
 import org.apache.hadoop.hbase.client.Admin;
@@ -595,6 +596,25 @@ public class BackupAdminImpl implements BackupAdmin {
     client.execute();
 
     return backupId;
+  }
+
+  public boolean updateBackup(UpdateBackupRequest request) throws IOException {
+    String backupId = request.getBackupId();
+    BackupInfo backupInfo = getBackupInfo(backupId);
+    String backupRootDir = backupInfo.getBackupRootDir();
+    String snapshotType = request.getSnapshotType();
+
+    // validations
+    List<TableName> tableNameList = request.getTableList();
+    List<TableName> backedUpTables = backupInfo.getTableNames();
+
+
+    if ("full".equalsIgnoreCase(snapshotType)) {
+      // take another snapshot
+    } else {
+      // take the incremental snapshot
+    }
+    return true;
   }
 
   private List<TableName> excludeNonExistingTables(List<TableName> tableList,
