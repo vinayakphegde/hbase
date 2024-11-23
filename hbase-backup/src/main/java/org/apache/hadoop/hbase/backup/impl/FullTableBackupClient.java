@@ -22,11 +22,15 @@ import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.BACKUP_MAX_A
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.DEFAULT_BACKUP_ATTEMPTS_PAUSE_MS;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.DEFAULT_BACKUP_MAX_ATTEMPTS;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.JOB_NAME_CONF_KEY;
+import static org.apache.hadoop.hbase.backup.util.ContinuousBackup.DEFAULT_CONTINUOUS_BACKUP_REPLICATION_ENDPOINT;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.backup.BackupCopyJob;
 import org.apache.hadoop.hbase.backup.BackupInfo;
@@ -39,6 +43,7 @@ import org.apache.hadoop.hbase.backup.master.LogRollMasterProcedureManager;
 import org.apache.hadoop.hbase.backup.util.BackupUtils;
 import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
@@ -134,30 +139,39 @@ public class FullTableBackupClient extends TableBackupClient {
     try (Admin admin = conn.getAdmin()) {
       // Begin BACKUP
       beginBackup(backupManager, backupInfo);
-      String savedStartCode;
-      boolean firstBackup;
-      // do snapshot for full table backup
 
-      savedStartCode = backupManager.readBackupStartCode();
-      firstBackup = savedStartCode == null || Long.parseLong(savedStartCode) == 0L;
-      if (firstBackup) {
-        // This is our first backup. Let's put some marker to system table so that we can hold the
-        // logs while we do the backup.
-        backupManager.writeBackupStartCode(0L);
+      if (backupInfo.isContinuousBackupEnabled()) {
+        // Start WAL Replication to back up Location
+        backupInfo.setPhase(BackupInfo.BackupPhase.SETUP_WAL_REPLICATION);
+        startContinuousWALBackup(admin);
       }
-      // We roll log here before we do the snapshot. It is possible there is duplicate data
-      // in the log that is already in the snapshot. But if we do it after the snapshot, we
-      // could have data loss.
-      // A better approach is to do the roll log on each RS in the same global procedure as
-      // the snapshot.
-      LOG.info("Execute roll log procedure for full backup ...");
 
-      Map<String, String> props = new HashMap<>();
-      props.put("backupRoot", backupInfo.getBackupRootDir());
-      admin.execProcedure(LogRollMasterProcedureManager.ROLLLOG_PROCEDURE_SIGNATURE,
-        LogRollMasterProcedureManager.ROLLLOG_PROCEDURE_NAME, props);
+      if (!backupInfo.isContinuousBackupEnabled()) {
+        String savedStartCode;
+        boolean firstBackup;
+        // do snapshot for full table backup
 
-      newTimestamps = backupManager.readRegionServerLastLogRollResult();
+        savedStartCode = backupManager.readBackupStartCode();
+        firstBackup = savedStartCode == null || Long.parseLong(savedStartCode) == 0L;
+        if (firstBackup) {
+          // This is our first backup. Let's put some marker to system table so that we can hold the
+          // logs while we do the backup.
+          backupManager.writeBackupStartCode(0L);
+        }
+        // We roll log here before we do the snapshot. It is possible there is duplicate data
+        // in the log that is already in the snapshot. But if we do it after the snapshot, we
+        // could have data loss.
+        // A better approach is to do the roll log on each RS in the same global procedure as
+        // the snapshot.
+        LOG.info("Execute roll log procedure for full backup ...");
+
+        Map<String, String> props = new HashMap<>();
+        props.put("backupRoot", backupInfo.getBackupRootDir());
+        admin.execProcedure(LogRollMasterProcedureManager.ROLLLOG_PROCEDURE_SIGNATURE,
+          LogRollMasterProcedureManager.ROLLLOG_PROCEDURE_NAME, props);
+
+        newTimestamps = backupManager.readRegionServerLastLogRollResult();
+      }
 
       // SNAPSHOT_TABLES:
       backupInfo.setPhase(BackupPhase.SNAPSHOT);
@@ -173,24 +187,35 @@ public class FullTableBackupClient extends TableBackupClient {
       // do snapshot copy
       LOG.debug("snapshot copy for " + backupId);
       snapshotCopy(backupInfo);
-      // Updates incremental backup table set
-      backupManager.addIncrementalBackupTableSet(backupInfo.getTables());
+      if (backupInfo.isContinuousBackupEnabled()) {
+        // Updates continuous backup table set
+        backupManager.addContinuousBackupTableSet(backupInfo.getTables());
+      } else {
+        // Updates incremental backup table set
+        backupManager.addIncrementalBackupTableSet(backupInfo.getTables());
+      }
 
       // BACKUP_COMPLETE:
       // set overall backup status: complete. Here we make sure to complete the backup.
       // After this checkpoint, even if entering cancel process, will let the backup finished
       backupInfo.setState(BackupState.COMPLETE);
-      // The table list in backupInfo is good for both full backup and incremental backup.
-      // For incremental backup, it contains the incremental backup table set.
-      backupManager.writeRegionServerLogTimestamp(backupInfo.getTables(), newTimestamps);
 
-      Map<TableName, Map<String, Long>> newTableSetTimestampMap =
-        backupManager.readLogTimestampMap();
+      if (backupInfo.isContinuousBackupEnabled()) {
+        // close the older backup peer
 
-      backupInfo.setTableSetTimestampMap(newTableSetTimestampMap);
-      Long newStartCode =
-        BackupUtils.getMinValue(BackupUtils.getRSLogTimestampMins(newTableSetTimestampMap));
-      backupManager.writeBackupStartCode(newStartCode);
+      } else {
+        // The table list in backupInfo is good for both full backup and incremental backup.
+        // For incremental backup, it contains the incremental backup table set.
+        backupManager.writeRegionServerLogTimestamp(backupInfo.getTables(), newTimestamps);
+
+        Map<TableName, Map<String, Long>> newTableSetTimestampMap =
+          backupManager.readLogTimestampMap();
+
+        backupInfo.setTableSetTimestampMap(newTableSetTimestampMap);
+        Long newStartCode =
+          BackupUtils.getMinValue(BackupUtils.getRSLogTimestampMins(newTableSetTimestampMap));
+        backupManager.writeBackupStartCode(newStartCode);
+      }
 
       // backup complete
       completeBackup(conn, backupInfo, BackupType.FULL, conf);
@@ -198,6 +223,33 @@ public class FullTableBackupClient extends TableBackupClient {
       failBackup(conn, backupInfo, backupManager, e, "Unexpected BackupException : ",
         BackupType.FULL, conf);
       throw new IOException(e);
+    }
+  }
+
+  private void startContinuousWALBackup(Admin admin) throws IOException {
+    // Construct replication peer
+    Map<String, String> additionalArgs = new HashMap<>();
+    String rootDir = backupInfo.getBackupRootDir() + Path.SEPARATOR + backupInfo.getBackupId();
+    additionalArgs.put("hbase.backup.root.dir", rootDir);
+
+    Map<TableName, List<String>> tableMap = tableList.stream()
+      .collect(Collectors.toMap(tableName -> tableName, tableName -> new ArrayList<>()));
+
+    ReplicationPeerConfig peerConfig = ReplicationPeerConfig.newBuilder()
+      .setReplicationEndpointImpl(DEFAULT_CONTINUOUS_BACKUP_REPLICATION_ENDPOINT)
+      .setReplicateAllUserTables(false)
+      .setTableCFsMap(tableMap)
+      .putAllConfiguration(additionalArgs)
+      .build();
+
+    // Add Replication Peer
+    try {
+      admin.addReplicationPeer(backupId, peerConfig, true);
+      LOG.info("Successfully added replication peer with backup ID: {}", backupId);
+    } catch (IOException e) {
+      LOG.error("Failed to add replication peer with backup ID: {}. Error: {}", backupId,
+        e.getMessage(), e);
+      throw e;
     }
   }
 

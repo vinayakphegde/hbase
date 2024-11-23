@@ -95,6 +95,10 @@ public interface BackupRestoreConstants {
   String OPTION_YARN_QUEUE_NAME = "q";
   String OPTION_YARN_QUEUE_NAME_DESC = "Yarn queue name to run backup create command on";
   String OPTION_YARN_QUEUE_NAME_RESTORE_DESC = "Yarn queue name to run backup restore command on";
+  String OPTION_ENABLE_CONTINUOUS_BACKUP = "cb";
+  String LONG_OPTION_ENABLE_CONTINUOUS_BACKUP = "continuous-backup-enabled";
+  String OPTION_ENABLE_CONTINUOUS_BACKUP_DESC = "Flag indicating that the full backup "
+    + "is part of a continuous backup process.";
 
   String JOB_NAME_CONF_KEY = "mapreduce.job.name";
 
