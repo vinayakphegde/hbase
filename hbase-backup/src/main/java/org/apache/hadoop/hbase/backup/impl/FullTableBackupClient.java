@@ -17,6 +17,7 @@
  */
 package org.apache.hadoop.hbase.backup.impl;
 
+import static org.apache.hadoop.hbase.HConstants.REPLICATION_SCOPE_GLOBAL;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.BACKUP_ATTEMPTS_PAUSE_MS_KEY;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.BACKUP_MAX_ATTEMPTS_KEY;
 import static org.apache.hadoop.hbase.backup.BackupRestoreConstants.CONF_CONTINUOUS_BACKUP_WAL_DIR;
@@ -44,7 +45,11 @@ import org.apache.hadoop.hbase.backup.BackupType;
 import org.apache.hadoop.hbase.backup.master.LogRollMasterProcedureManager;
 import org.apache.hadoop.hbase.backup.util.BackupUtils;
 import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
 import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.TableDescriptor;
+import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
 import org.apache.hadoop.hbase.replication.ReplicationException;
 import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
@@ -250,14 +255,21 @@ public class FullTableBackupClient extends TableBackupClient {
 
   private void enableTableReplication(Admin admin) throws IOException {
     for (TableName table : tableList) {
-      try {
-        admin.enableTableReplication(table);
-        LOG.info("Replication enabled for table: {}", table);
-      } catch (IOException e) {
-        LOG.error("Failed to enable replication for table: {}. Error: {}", table, e.getMessage(),
-          e);
-        throw e;
+      TableDescriptor tableDescriptor = admin.getDescriptor(table);
+      TableDescriptorBuilder tableDescriptorBuilder =
+        TableDescriptorBuilder.newBuilder(tableDescriptor);
+
+      for (ColumnFamilyDescriptor cfDescriptor : tableDescriptor.getColumnFamilies()) {
+        if (cfDescriptor.getScope() != REPLICATION_SCOPE_GLOBAL) {
+          ColumnFamilyDescriptor newCfDescriptor = ColumnFamilyDescriptorBuilder
+            .newBuilder(cfDescriptor).setScope(REPLICATION_SCOPE_GLOBAL).build();
+
+          tableDescriptorBuilder.modifyColumnFamily(newCfDescriptor);
+        }
       }
+
+      admin.modifyTable(tableDescriptorBuilder.build());
+      LOG.info("Enabled Global replication scope for table: {}", table);
     }
   }
 
@@ -285,7 +297,7 @@ public class FullTableBackupClient extends TableBackupClient {
       throw new IOException("WAL Directory is not specified for continuous backup.");
     }
 
-    additionalArgs.put(CONF_CONTINUOUS_BACKUP_WAL_DIR, walDir);
+    additionalArgs.put("hbase.backup.root.dir", walDir);
 
     // TODO: different solution ??
     additionalArgs.put("hbase.backup.wal.replication.peerUUID", UUID.randomUUID().toString());

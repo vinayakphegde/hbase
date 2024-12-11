@@ -130,7 +130,7 @@ public interface BackupRestoreConstants {
   String CONTINUOUS_BACKUP_REPLICATION_PEER = "continuous_backup_replication_peer";
 
   String DEFAULT_CONTINUOUS_BACKUP_REPLICATION_ENDPOINT =
-    "org.apache.hadoop.hbase.backup.impl.ContinuousBackupReplicationEndpoint";
+    "org.apache.hadoop.hbase.backup.replication.ContinuousBackupReplicationEndpoint";
 
   String CONF_CONTINUOUS_BACKUP_WAL_DIR = "hbase.backup.continuous.wal.dir";
 
