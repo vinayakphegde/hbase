@@ -193,8 +193,8 @@ public class BackupManager implements Closeable {
    * @throws BackupException exception
    */
   public BackupInfo createBackupInfo(String backupId, BackupType type, List<TableName> tableList,
-    String targetRootDir, int workers, long bandwidth, boolean noChecksumVerify)
-    throws BackupException {
+    String targetRootDir, int workers, long bandwidth, boolean noChecksumVerify,
+    boolean continuousBackupEnabled) throws BackupException {
     if (targetRootDir == null) {
       throw new BackupException("Wrong backup request parameter: target backup root directory");
     }
@@ -232,6 +232,7 @@ public class BackupManager implements Closeable {
     backupInfo.setBandwidth(bandwidth);
     backupInfo.setWorkers(workers);
     backupInfo.setNoChecksumVerify(noChecksumVerify);
+    backupInfo.setContinuousBackupEnabled(continuousBackupEnabled);
     return backupInfo;
   }
 
@@ -417,6 +418,15 @@ public class BackupManager implements Closeable {
    */
   public void addIncrementalBackupTableSet(Set<TableName> tables) throws IOException {
     systemTable.addIncrementalBackupTableSet(tables, backupInfo.getBackupRootDir());
+  }
+
+  /**
+   * Adds set of tables to overall continuous backup table set
+   * @param tables tables
+   * @throws IOException exception
+   */
+  public void addContinuousBackupTableSet(Set<TableName> tables) throws IOException {
+    systemTable.addContinuousBackupTableSet(tables);
   }
 
   public Connection getConnection() {
