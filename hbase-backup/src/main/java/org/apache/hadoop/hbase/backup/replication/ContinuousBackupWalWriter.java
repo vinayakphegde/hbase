@@ -69,6 +69,10 @@ public class ContinuousBackupWalWriter {
     persistWalWriterContext();
   }
 
+  public Path getWalFullPath() {
+    return new Path(rootDir, walPath);
+  }
+
   public long getLength() {
     return writer.getLength();
   }
